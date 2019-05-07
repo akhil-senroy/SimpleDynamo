@@ -173,7 +173,18 @@ public class SimpleDynamoProvider extends ContentProvider {
                 e.printStackTrace();
             }
         }
+        else{
+            if(dbHash.containsKey(selection))
+            {
+                String[] myValues = new String[]{selection, dbHash.get(selection)};
+                cursor.addRow(myValues);
+                return cursor;
+            }
+            else{
+                
+            }
 
+        }
         return null;
     }
 
