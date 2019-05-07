@@ -74,49 +74,13 @@ public class SimpleDynamoProvider extends ContentProvider {
         // TODO Auto-generated method stub
         String key = values.get("key").toString();
         String value = values.get("value").toString();
-        String tempEmu = CurrentValues.emuId;
+        String tempEmu;
+        String insertMsg = "INSERT#" + key + "_" + value;
 
-        while (true) {
-            try {
-                if (genHash(key).compareTo(emuList.get(tempEmu)) <= 0)
-                {
-                    if (tempEmu.equals(emuList.firstKey())) {
-                        String insertMsg = "INSERT#" + key + "_" + value;
-                        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, insertMsg, tempEmu);
-//                        Log.e(TAG,"INSERT CONDN SATISFIED = "+CurrentValues.emuId+" " +tempEmu+" " +key+" "+tempEmu.equals(emuList.firstKey()));
-                        replicateData(key, value, tempEmu);
-
-                        break;
-                    } else if (genHash(key).compareTo(emuList.get(emuList.lowerKey(tempEmu))) > 0) {
-                        String insertMsg = "INSERT#" + key + "_" + value;
-                        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, insertMsg, tempEmu);
-//                        Log.e(TAG,"INSERT CONDN SATISFIED = "+CurrentValues.emuId+" " +tempEmu+" " +key+" "+(genHash(key).compareTo(emuList.get(emuList.lowerKey(tempEmu))) > 0));
-
-                        replicateData(key, value, tempEmu);
-
-                        break;
-                    } else {
-                        tempEmu = emuList.lowerKey(tempEmu);
-                    }
-                }
-                else
-                {
-                    if (tempEmu.equals(emuList.lastKey())) {
-                        String insertMsg = "INSERT#" + key + "_" + value;
-                        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, insertMsg, emuList.firstKey());
-//                        Log.e(TAG,"INSERT CONDN SATISFIED = "+CurrentValues.emuId+" " +emuList.firstKey()+" " +key+" "+(tempEmu.equals(emuList.lastKey())));
-
-                        replicateData(key, value, emuList.firstKey());
-                        break;
-                    }
-                    else {
-                        tempEmu = emuList.higherKey(tempEmu);
-                    }
-                }
-            } catch (NoSuchAlgorithmException e) {
-                e.printStackTrace();
-            }
-        }
+        tempEmu = keyPosition(key);
+        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, insertMsg, tempEmu);
+        replicateData(key, value, tempEmu);
+        
         return null;
     }
 
@@ -181,7 +145,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                 return cursor;
             }
             else{
-                
+
             }
 
         }
@@ -264,6 +228,37 @@ public class SimpleDynamoProvider extends ContentProvider {
 //            Log.e(TAG,"REPLICATION = "+emuID+" " +emuList.firstKey()+" "+emuList.higherKey(emuID)+" "+emuList.higherKey(emuList.higherKey(emuID)));
         }
 
+    }
+
+    public String keyPosition(String key)
+    {
+        String tempEmu = CurrentValues.emuId;
+
+        while (true) {
+            try {
+                if (genHash(key).compareTo(emuList.get(tempEmu)) <= 0)
+                {
+                    if (tempEmu.equals(emuList.firstKey())) {
+                        return tempEmu;
+                    } else if (genHash(key).compareTo(emuList.get(emuList.lowerKey(tempEmu))) > 0) {
+                        return tempEmu;
+                    } else {
+                        tempEmu = emuList.lowerKey(tempEmu);
+                    }
+                }
+                else
+                {
+                    if (tempEmu.equals(emuList.lastKey())) {
+                        return emuList.firstKey();
+                    }
+                    else {
+                        tempEmu = emuList.higherKey(tempEmu);
+                    }
+                }
+            } catch (NoSuchAlgorithmException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     //----------------------------------------------------------------------------
