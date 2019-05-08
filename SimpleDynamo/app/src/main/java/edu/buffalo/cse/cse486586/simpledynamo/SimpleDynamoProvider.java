@@ -47,7 +47,6 @@ public class SimpleDynamoProvider extends ContentProvider {
     private HashMap<String, String> dbHash = new HashMap<String, String>();
     MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
     MatrixCursor starCursor = new MatrixCursor(new String[]{"key", "value"});
-    MatrixCursor tempCursor = new MatrixCursor(new String[]{"key", "value"});
     int count=0;
 
 
@@ -426,7 +425,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                             value = data.split(":")[1];
                             myValues = new String[]{key, value};
                             starCursor.addRow(myValues);
-                            Log.e(TAG,"$$$$$$$$$$$$$$$$$$$$$$$$$$$"+key+" "+value);
+//                            Log.e(TAG,"Data = "+key+" "+value);
                         }
                         count++;
                         if(count>=3)
