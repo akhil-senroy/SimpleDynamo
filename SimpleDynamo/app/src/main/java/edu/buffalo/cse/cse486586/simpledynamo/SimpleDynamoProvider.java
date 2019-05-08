@@ -28,6 +28,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
+import android.media.MediaExtractor;
 import android.net.Uri;
 import android.nfc.Tag;
 import android.os.AsyncTask;
@@ -45,7 +46,9 @@ public class SimpleDynamoProvider extends ContentProvider {
     static final String[] REMOTE_PORT = {"11108", "11112", "11116", "11120", "11124"};
     private HashMap<String, String> dbHash = new HashMap<String, String>();
     MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
-
+    MatrixCursor starCursor = new MatrixCursor(new String[]{"key", "value"});
+    MatrixCursor tempCursor = new MatrixCursor(new String[]{"key", "value"});
+    int count=0;
 
 
     TreeMap<String, String> emuList = new TreeMap<String, String>(new Comparator<String>() {
@@ -62,6 +65,18 @@ public class SimpleDynamoProvider extends ContentProvider {
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
         // TODO Auto-generated method stub
+
+        if(selection.equals("@"))
+        {
+            dbHash.clear();
+        }
+        else{
+            dbHash.remove(selection);
+        }
+//        if(dbHash.isEmpty()){
+//            Log.e(TAG,"Data cleared!"+dbHash.values().toString());
+//        }
+
         return 0;
     }
 
@@ -125,24 +140,33 @@ public class SimpleDynamoProvider extends ContentProvider {
         // TODO Auto-generated method stub
 
         if (selection.equals("@")) {
+            MatrixCursor atCursor = new MatrixCursor(new String[]{"key", "value"});
 
             try {
                 for (String dbkey : dbHash.keySet()) {
 
                     String[] myValues = new String[]{dbkey, dbHash.get(dbkey)};
-                    cursor.addRow(myValues);
+                    atCursor.addRow(myValues);
                 }
 
                 Log.v("query", selection);
-                return cursor;
+                return atCursor;
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
         else if (selection.equals("*")) {
+            lock=true;
+            count=0;
+            String message = "STAR-QUERY#"+CurrentValues.emuId;
+            for(String i : emuList.keySet())
+            {
+                new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, message, i);
+            }
+            while(lock){}
 
+            return starCursor;
         }
-
         else{
             if(dbHash.containsKey(selection))
             {
@@ -151,18 +175,19 @@ public class SimpleDynamoProvider extends ContentProvider {
                 return cursor;
             }
             else{
+                lock = true;
                 String tempEmu = keyPosition(selection);
-                Log.e(TAG,"THIS IS WHERE THE KEY IS STORED = "+tempEmu+" "+selection);
+//                Log.e(TAG,"THIS IS WHERE THE KEY IS STORED = "+tempEmu+" "+selection);
                 String queryMsg = "QUERY#"+selection+"_"+CurrentValues.emuId;
 
-                while (lock) {
+                new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, queryMsg, tempEmu);
 
-                    new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, queryMsg, tempEmu);
+                while (lock){}
 
-                    if( cursor != null && cursor.getCount() > 0 ){
-                        return cursor;
-                    }
-                }
+                return cursor;
+//                    if( cursor != null && cursor.getCount() > 0 ){
+//                        return cursor;
+//                    }
 
             }
 
@@ -279,11 +304,19 @@ public class SimpleDynamoProvider extends ContentProvider {
         }
     }
 
-    public void callClientTask(String key, String val, String src){
+    public void clientTaskCallForQuery(String key, String val, String src){
         String responseMsg = "RESPONSE#"+key+"_"+val;
         new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, responseMsg, src);
 
     }
+
+    public void clientTaskCallForStar(String data, String src){
+        String responseMsg = "STAR-RESPONSE#"+data;
+        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, responseMsg, src);
+
+    }
+
+
 
     //----------------------------------------------------------------------------
 
@@ -339,7 +372,7 @@ public class SimpleDynamoProvider extends ContentProvider {
                         dbHash.put(key, value);
 //                        Log.e(TAG, "STORED " + key);
                         try {
-                            Log.e(TAG,"----- COMPARING VALUE WITH EmuHash = "+(genHash(key).compareTo(emuList.get(CurrentValues.emuId)))+" IN "+CurrentValues.emuId);
+                            Log.e(TAG,"COMPARING VALUE WITH EmuHash = "+(genHash(key).compareTo(emuList.get(CurrentValues.emuId)))+" IN "+CurrentValues.emuId);
                         } catch (NoSuchAlgorithmException e) {
                             e.printStackTrace();
                         }
@@ -354,22 +387,53 @@ public class SimpleDynamoProvider extends ContentProvider {
                         dbHash.put(key, value);
 
 //                        printDB();
-//                        Log.e(TAG,"----- COMPARING VALUE WITH EmuHash = #"+(genHash(key).compareTo(emuList.get(CurrentValues.emuId))));
                     }
                     else if (operation.equals("QUERY")){
                         String key = message[1].split("_")[0];
                         String src = message[1].split("_")[1];
                         String val = dbHash.get(key);
-                        callClientTask(key,val,src);
+                        clientTaskCallForQuery(key,val,src);
                     }
                     else if (operation.equals("RESPONSE"))
                     {
                         String key = message[1].split("_")[0];
                         String value = message[1].split("_")[1];
-                        Log.e(TAG, "key = "+key+" val = "+value);
+//                        Log.e(TAG, "key = "+key+" val = "+value);
                         String[] myValues = new String[]{key, value};
-                        cursor.addRow(myValues);                    }
-
+                        cursor.addRow(myValues);
+                        lock = false;
+                    }
+                    else if(operation.equals("STAR-QUERY"))
+                    {
+                        String temp = "";
+                        String res = "";
+                        String src = message[1];
+                        for (String dbkey : dbHash.keySet()) {
+                            temp = dbkey+":"+dbHash.get(dbkey);
+                            res = res+temp+"_";
+                        }
+                        Log.e(TAG,"Full data =  "+res);
+                        clientTaskCallForStar(res,src);
+                    }
+                    else if(operation.equals("STAR-RESPONSE")){
+//                        Log.e(TAG,"IN STAR-RESPONSE);
+                        String key;
+                        String value;
+                        String[] myValues;
+                        String fullData[] = message[1].split("_");
+                        for(String data : fullData){
+                            key = data.split(":")[0];
+                            value = data.split(":")[1];
+                            myValues = new String[]{key, value};
+                            starCursor.addRow(myValues);
+                            Log.e(TAG,"$$$$$$$$$$$$$$$$$$$$$$$$$$$"+key+" "+value);
+                        }
+                        count++;
+                        if(count>=3)
+                        {
+                            lock=false;
+                        }
+                    }
                 }
 
             } catch (IOException e) {
