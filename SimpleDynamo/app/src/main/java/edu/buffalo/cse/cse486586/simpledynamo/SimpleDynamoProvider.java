@@ -21,6 +21,7 @@ import java.util.Formatter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -40,10 +41,11 @@ public class SimpleDynamoProvider extends ContentProvider {
 
     static private final String TAG = SimpleDynamoProvider.class.getSimpleName();
     static final int SERVER_PORT = 10000;
-    //    static String[] REMOTE_PORT = {"11108","11112"};
+    boolean lock = true;
     static final String[] REMOTE_PORT = {"11108", "11112", "11116", "11120", "11124"};
     private HashMap<String, String> dbHash = new HashMap<String, String>();
     MatrixCursor cursor = new MatrixCursor(new String[]{"key", "value"});
+
 
 
     TreeMap<String, String> emuList = new TreeMap<String, String>(new Comparator<String>() {
@@ -80,7 +82,7 @@ public class SimpleDynamoProvider extends ContentProvider {
         tempEmu = keyPosition(key);
         new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, insertMsg, tempEmu);
         replicateData(key, value, tempEmu);
-        
+
         return null;
     }
 
@@ -137,6 +139,10 @@ public class SimpleDynamoProvider extends ContentProvider {
                 e.printStackTrace();
             }
         }
+        else if (selection.equals("*")) {
+
+        }
+
         else{
             if(dbHash.containsKey(selection))
             {
@@ -145,6 +151,18 @@ public class SimpleDynamoProvider extends ContentProvider {
                 return cursor;
             }
             else{
+                String tempEmu = keyPosition(selection);
+                Log.e(TAG,"THIS IS WHERE THE KEY IS STORED = "+tempEmu+" "+selection);
+                String queryMsg = "QUERY#"+selection+"_"+CurrentValues.emuId;
+
+                while (lock) {
+
+                    new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, queryMsg, tempEmu);
+
+                    if( cursor != null && cursor.getCount() > 0 ){
+                        return cursor;
+                    }
+                }
 
             }
 
@@ -261,6 +279,12 @@ public class SimpleDynamoProvider extends ContentProvider {
         }
     }
 
+    public void callClientTask(String key, String val, String src){
+        String responseMsg = "RESPONSE#"+key+"_"+val;
+        new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, responseMsg, src);
+
+    }
+
     //----------------------------------------------------------------------------
 
     private class ServerTask extends AsyncTask<ServerSocket, String, Void> {
@@ -297,7 +321,8 @@ public class SimpleDynamoProvider extends ContentProvider {
                         informSource(newEmu);
 //                        printEmuList();
 
-                    } else if (operation.equals("JOIN-UPDATE")) {
+                    }
+                    else if (operation.equals("JOIN-UPDATE")) {
                         for (String i : message[1].split("_")) {
                             try {
                                 emuList.put(i, genHash(i));
@@ -307,7 +332,8 @@ public class SimpleDynamoProvider extends ContentProvider {
 //                            printEmuList();
                         }
 
-                    } else if (operation.equals("INSERT")) {
+                    }
+                    else if (operation.equals("INSERT")) {
                         String key = message[1].split("_")[0];
                         String value = message[1].split("_")[1];
                         dbHash.put(key, value);
@@ -319,7 +345,8 @@ public class SimpleDynamoProvider extends ContentProvider {
                         }
 
 
-                    } else if (operation.equals("REPLICATE")) {
+                    }
+                    else if (operation.equals("REPLICATE")) {
 
                         String key = message[1].split("_")[0];
                         String value = message[1].split("_")[1];
@@ -329,6 +356,19 @@ public class SimpleDynamoProvider extends ContentProvider {
 //                        printDB();
 //                        Log.e(TAG,"----- COMPARING VALUE WITH EmuHash = #"+(genHash(key).compareTo(emuList.get(CurrentValues.emuId))));
                     }
+                    else if (operation.equals("QUERY")){
+                        String key = message[1].split("_")[0];
+                        String src = message[1].split("_")[1];
+                        String val = dbHash.get(key);
+                        callClientTask(key,val,src);
+                    }
+                    else if (operation.equals("RESPONSE"))
+                    {
+                        String key = message[1].split("_")[0];
+                        String value = message[1].split("_")[1];
+                        Log.e(TAG, "key = "+key+" val = "+value);
+                        String[] myValues = new String[]{key, value};
+                        cursor.addRow(myValues);                    }
 
                 }
 
